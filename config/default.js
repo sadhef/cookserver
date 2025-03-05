@@ -5,6 +5,6 @@ module.exports = {
   port: process.env.PORT || 5000,
   env: process.env.NODE_ENV || 'development',
   openRouterApiKey: process.env.OPENROUTER_API_KEY || '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',
-  siteUrl: process.env.SITE_URL || 'https://cookify.vercel.app',
+  siteUrl: process.env.SITE_URL || 'https://cookifyy.vercel.app',
   siteName: process.env.SITE_NAME || 'COokiFy'
 };

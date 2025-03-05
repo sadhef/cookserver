@@ -31,7 +31,7 @@ app.use(cookieParser());
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
-      'https://cookify.vercel.app',
+      'https://cookifyy.vercel.app',
       'https://cookify-frontend.vercel.app',
       'http://localhost:3000'
     ];
