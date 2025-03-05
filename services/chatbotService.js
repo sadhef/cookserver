@@ -16,7 +16,7 @@ const client = new OpenAI({
 // Build context about the application to help the model provide relevant answers
 const systemMessage = {
   role: 'system',
-  content: `You are Rifi, the friendly recipe assistant for COokiFy application.
+  content: `You are Cookie 🎀, the friendly recipe assistant for COokiFy application.
   
   COokiFy is a recipe management platform where users can:
   - Browse and search recipes by name or ingredients
@@ -100,7 +100,7 @@ exports.getChatbotResponse = async (message, history = []) => {
       throw new Error('The request timed out. Please try a shorter message or try again later.');
     }
     
-    throw new Error('Failed to get response from Rifi. Please try again later.');
+    throw new Error('Failed to get response from Cookie 🎀. Please try again later.');
   }
 };
 
@@ -154,7 +154,7 @@ exports.suggestRecipes = async (ingredients) => {
 exports.getFallbackResponse = (messageType, ingredients = []) => {
   switch (messageType) {
     case 'greeting':
-      return "Hello! I'm Rifi, your recipe assistant. I can help you find recipes, answer cooking questions, and provide tips. How can I help you today?";
+      return "Hello! I'm Cookie 🎀, your recipe assistant. I can help you find recipes, answer cooking questions, and provide tips. How can I help you today?";
     
     case 'suggestion':
       return `Based on the ingredients you mentioned (${ingredients.join(', ')}), here are some simple ideas:
