@@ -13,7 +13,7 @@ const nutritionRoutes = require('./routes/nutritionRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const userRoutes = require('./routes/userRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
-const chatbotRoutes = require('./routes/chatbotRoutes'); // New chatbot routes
+const chatbotRoutes = require('./routes/chatbotRoutes'); // Add chatbot routes if they exist
 
 // Initialize app
 const app = express();
@@ -24,10 +24,7 @@ app.use(express.json());
 // Cookie parser
 app.use(cookieParser());
 
-// Enable CORS
-// Update the CORS configuration in app.js
-
-// Enable CORS
+// Enable CORS with improved configuration
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
@@ -42,6 +39,7 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
       callback(null, true);
     } else {
+      console.log(`Blocked by CORS: ${origin} not in allowed list`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -89,7 +87,9 @@ app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/settings', settingsRoutes);
-app.use('/api/chatbot', chatbotRoutes); // Add chatbot routes
+if (typeof chatbotRoutes !== 'undefined') {
+  app.use('/api/chatbot', chatbotRoutes);
+}
 
 // Handle direct requests for images
 app.get('/images/:filename', (req, res) => {
