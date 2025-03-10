@@ -264,61 +264,107 @@ exports.searchRecipesByIngredients = asyncHandler(async (req, res) => {
       const ingredientCoverageRatio = matchCount / normalizedIngredients.length;
       const recipeCoverageRatio = recipeMatchCount / totalIngredients;
       
+      // Perfect match condition: All user ingredients are matched with high confidence
+      // and the recipe doesn't require too many additional ingredients
+      const isPerfectMatch = ingredientCoverageRatio >= 0.9 && recipeCoverageRatio >= 0.7;
+      
+      // High match condition: Most user ingredients are matched
+      const isHighMatch = ingredientCoverageRatio >= 0.8;
+      
+      // Good match condition: Many user ingredients are matched
+      const isGoodMatch = ingredientCoverageRatio >= 0.6;
+      
       // Final score combines both metrics (weighted average)
       // Higher weight on ingredient coverage (user ingredients matched)
       const similarityScore = (ingredientCoverageRatio * 0.7) + (recipeCoverageRatio * 0.3);
       
-      // Add the score to the recipe
+      // Add the score and match categories to the recipe
       return {
         ...recipe,
         similarityScore,
         matchCount,
         recipeMatchCount,
         ingredientCoverageRatio,
-        recipeCoverageRatio
+        recipeCoverageRatio,
+        isPerfectMatch,
+        isHighMatch,
+        isGoodMatch
       };
     });
     
     // Filter recipes with at least one matching ingredient
     const matchingRecipes = scoredRecipes.filter(recipe => recipe.matchCount > 0);
     
-    // Get high-rated recipes as fallbacks
-    const otherRecipes = scoredRecipes
-      .filter(recipe => recipe.matchCount === 0)
-      .sort((a, b) => b.averageRating - a.averageRating);
-    
     // Sort matching recipes by similarity score
     matchingRecipes.sort((a, b) => b.similarityScore - a.similarityScore);
     
-    // Take top 15 matching recipes 
-    let resultRecipes = matchingRecipes.slice(0, 15);
+    // Get perfect matches first (exact or very close matches)
+    const perfectMatches = matchingRecipes.filter(recipe => recipe.isPerfectMatch);
     
-    // If we don't have 15 matching recipes, add some top-rated recipes
+    // Get high matches (most user ingredients are matched)
+    const highMatches = matchingRecipes.filter(
+      recipe => !recipe.isPerfectMatch && recipe.isHighMatch
+    );
+    
+    // Get good matches (many user ingredients are matched)
+    const goodMatches = matchingRecipes.filter(
+      recipe => !recipe.isPerfectMatch && !recipe.isHighMatch && recipe.isGoodMatch
+    );
+    
+    // Get other less relevant matches
+    const otherMatches = matchingRecipes.filter(
+      recipe => !recipe.isPerfectMatch && !recipe.isHighMatch && !recipe.isGoodMatch
+    );
+    
+    // Get high-rated recipes as fallbacks
+    const topRatedRecipes = scoredRecipes
+      .filter(recipe => recipe.matchCount === 0)
+      .sort((a, b) => b.averageRating - a.averageRating)
+      .slice(0, 5); // Limit to 5 top-rated recipes
+    
+    // Prepare the result - prioritize perfect matches, then high/good/other matches
+    let resultRecipes = [...perfectMatches, ...highMatches, ...goodMatches];
+    
+    // Only add other matches if we don't have enough good matches
     if (resultRecipes.length < 15) {
-      const topRatedRecipes = otherRecipes
-        .slice(0, 15 - resultRecipes.length)
-        .map(recipe => ({
-          ...recipe,
-          isSuggested: true
-        }));
+      resultRecipes = [...resultRecipes, ...otherMatches.slice(0, 15 - resultRecipes.length)];
+    }
+    
+    // Add suggestions only if we have very few matches
+    if (resultRecipes.length < 3) {
+      const suggestedRecipes = topRatedRecipes.map(recipe => ({
+        ...recipe,
+        isSuggested: true
+      }));
       
-      resultRecipes = [...resultRecipes, ...topRatedRecipes];
+      resultRecipes = [...resultRecipes, ...suggestedRecipes];
     }
     
     // Remove internal scoring properties before sending response
     resultRecipes = resultRecipes.map(recipe => {
       const { 
-        recipeMatchCount, ingredientCoverageRatio, recipeCoverageRatio, 
+        recipeMatchCount, ingredientCoverageRatio, recipeCoverageRatio,
+        isPerfectMatch, isHighMatch, isGoodMatch,
         ...cleanedRecipe 
       } = recipe;
       return cleanedRecipe;
     });
+    
+    // Added: Categorize results for the frontend
+    const categories = {
+      perfectMatches: perfectMatches.length,
+      highMatches: highMatches.length,
+      goodMatches: goodMatches.length,
+      otherMatches: otherMatches.length,
+      suggestedRecipes: resultRecipes.filter(r => r.isSuggested).length
+    };
     
     res.status(200).json({
       success: true,
       count: resultRecipes.length,
       totalMatches: matchingRecipes.length,
       totalRecipes: allRecipes.length,
+      categories,
       data: resultRecipes
     });
   } catch (error) {
