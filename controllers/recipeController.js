@@ -202,13 +202,14 @@ exports.searchRecipesByIngredients = asyncHandler(async (req, res) => {
       
       // Initialize similarity metrics
       let matchCount = 0;
+      let recipeMatchCount = 0;
       let totalIngredients = normalizedRecipeIngredients.length || 1; // Avoid division by zero
       
-      // Count matching ingredients
+      // Count how many user ingredients match recipe ingredients
       normalizedIngredients.forEach(userIngredient => {
-        // Look for exact matches first
+        // Exact matches
         const exactMatch = normalizedRecipeIngredients.some(recipeIng => 
-          recipeIng === userIngredient || recipeIng.includes(userIngredient) || userIngredient.includes(recipeIng)
+          recipeIng === userIngredient
         );
         
         if (exactMatch) {
@@ -216,65 +217,102 @@ exports.searchRecipesByIngredients = asyncHandler(async (req, res) => {
           return;
         }
         
-        // If no exact match, look for partial matches (words within ingredients)
-        const userWords = userIngredient.split(' ');
-        let hasPartialMatch = false;
+        // Partial ingredient matches (one contains the other)
+        const partialMatch = normalizedRecipeIngredients.some(recipeIng => 
+          recipeIng.includes(userIngredient) || userIngredient.includes(recipeIng)
+        );
         
-        for (const word of userWords) {
-          if (word.length <= 2) continue; // Skip very short words
-          
-          const partialMatch = normalizedRecipeIngredients.some(recipeIng => 
-            recipeIng.includes(word)
-          );
-          
-          if (partialMatch) {
-            hasPartialMatch = true;
-            break;
-          }
+        if (partialMatch) {
+          matchCount += 0.8; // High weight for partial matches
+          return;
         }
         
-        if (hasPartialMatch) {
-          matchCount += 0.5; // Partial match has less weight
+        // Word-level matches
+        const userWords = userIngredient.split(/\s+/).filter(word => word.length > 2);
+        
+        for (const recipeIng of normalizedRecipeIngredients) {
+          const recipeWords = recipeIng.split(/\s+/).filter(word => word.length > 2);
+          
+          // Count matching words
+          let wordMatches = 0;
+          for (const userWord of userWords) {
+            if (recipeWords.some(recipeWord => recipeWord.includes(userWord) || userWord.includes(recipeWord))) {
+              wordMatches++;
+            }
+          }
+          
+          if (wordMatches > 0 && userWords.length > 0) {
+            // Partial word match score (proportional to how many words matched)
+            matchCount += 0.5 * (wordMatches / userWords.length);
+            break; // Only count once per user ingredient
+          }
         }
       });
       
-      // Calculate similarity score (as a percentage)
-      const matchRatio = matchCount / totalIngredients;
-      const coverageRatio = normalizedIngredients.length > 0 ? matchCount / normalizedIngredients.length : 0;
+      // Count how many recipe ingredients match user ingredients (reverse matching)
+      normalizedRecipeIngredients.forEach(recipeIng => {
+        if (normalizedIngredients.some(userIng => 
+          userIng === recipeIng || 
+          userIng.includes(recipeIng) || 
+          recipeIng.includes(userIng)
+        )) {
+          recipeMatchCount++;
+        }
+      });
+      
+      // Calculate similarity scores
+      const ingredientCoverageRatio = matchCount / normalizedIngredients.length;
+      const recipeCoverageRatio = recipeMatchCount / totalIngredients;
       
       // Final score combines both metrics (weighted average)
-      const similarityScore = (matchRatio * 0.6) + (coverageRatio * 0.4);
+      // Higher weight on ingredient coverage (user ingredients matched)
+      const similarityScore = (ingredientCoverageRatio * 0.7) + (recipeCoverageRatio * 0.3);
       
       // Add the score to the recipe
       return {
         ...recipe,
         similarityScore,
-        matchCount
+        matchCount,
+        recipeMatchCount,
+        ingredientCoverageRatio,
+        recipeCoverageRatio
       };
     });
     
-    // Create two arrays: matching recipes and all other recipes
+    // Filter recipes with at least one matching ingredient
     const matchingRecipes = scoredRecipes.filter(recipe => recipe.matchCount > 0);
-    const otherRecipes = scoredRecipes.filter(recipe => recipe.matchCount === 0);
     
-    // Sort both arrays
+    // Get high-rated recipes as fallbacks
+    const otherRecipes = scoredRecipes
+      .filter(recipe => recipe.matchCount === 0)
+      .sort((a, b) => b.averageRating - a.averageRating);
+    
+    // Sort matching recipes by similarity score
     matchingRecipes.sort((a, b) => b.similarityScore - a.similarityScore);
-    otherRecipes.sort((a, b) => b.averageRating - a.averageRating);
     
-    // Take the top matching recipes (for the first page)
-    let resultRecipes = [...matchingRecipes];
+    // Take top 15 matching recipes 
+    let resultRecipes = matchingRecipes.slice(0, 15);
     
-    // If we don't have at least 5 matching recipes, add some recommended recipes
-    if (resultRecipes.length < 5) {
-      const recommendedRecipes = otherRecipes
-        .slice(0, Math.max(5 - resultRecipes.length, 0))
+    // If we don't have 15 matching recipes, add some top-rated recipes
+    if (resultRecipes.length < 15) {
+      const topRatedRecipes = otherRecipes
+        .slice(0, 15 - resultRecipes.length)
         .map(recipe => ({
           ...recipe,
           isSuggested: true
         }));
       
-      resultRecipes = [...resultRecipes, ...recommendedRecipes];
+      resultRecipes = [...resultRecipes, ...topRatedRecipes];
     }
+    
+    // Remove internal scoring properties before sending response
+    resultRecipes = resultRecipes.map(recipe => {
+      const { 
+        recipeMatchCount, ingredientCoverageRatio, recipeCoverageRatio, 
+        ...cleanedRecipe 
+      } = recipe;
+      return cleanedRecipe;
+    });
     
     res.status(200).json({
       success: true,
