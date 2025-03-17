@@ -15,8 +15,8 @@ exports.getChatbotResponse = asyncHandler(async (req, res) => {
     throw new Error('Please provide a message');
   }
 
-  // Set a 2-minute timeout for the request
-  req.setTimeout(120000);
+  // Set a 3-minute timeout for the request (180 seconds)
+  req.setTimeout(180000);
 
   try {
     // Try to get a response from the chatbot service
@@ -36,6 +36,9 @@ exports.getChatbotResponse = asyncHandler(async (req, res) => {
     
     if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
       fallbackResponse = chatbotService.getFallbackResponse('greeting');
+    } else if (message.toLowerCase().includes('recipe') || message.toLowerCase().includes('cook')) {
+      // Provide a more detailed recipe if they're asking for one
+      fallbackResponse = chatbotService.getFallbackResponse('recipe', message);
     } else {
       fallbackResponse = chatbotService.getFallbackResponse('general');
     }
@@ -64,8 +67,8 @@ exports.suggestRecipes = asyncHandler(async (req, res) => {
     throw new Error('Please provide an array of ingredients');
   }
 
-  // Set a 2-minute timeout for the request
-  req.setTimeout(120000);
+  // Set a 3-minute timeout for the request
+  req.setTimeout(180000);
 
   try {
     // Try to get suggestions from the service
