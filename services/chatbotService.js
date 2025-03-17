@@ -4,7 +4,7 @@ const config = require('../config/default');
 // Initialize OpenAI client with OpenRouter configuration
 const client = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY || config.openRouterApiKey,
+  apiKey: process.env.OPENROUTER_API_KEY || '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',
   defaultHeaders: {
     'HTTP-Referer': process.env.SITE_URL || 'https://cookify.com',
     'X-Title': process.env.SITE_NAME || 'COokiFy'
