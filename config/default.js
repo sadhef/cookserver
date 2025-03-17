@@ -4,7 +4,7 @@ module.exports = {
   jwtExpiration: process.env.JWT_EXPIRE || '24h',
   port: process.env.PORT || 5000,
   env: process.env.NODE_ENV || 'development',
-  openRouterApiKey: process.env.OPENROUTER_API_KEY || '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',
+  openRouterApiKey: process.env.OPENROUTER_API_KEY || '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',
   siteUrl: process.env.SITE_URL || 'https://cookifyy.vercel.app',
   siteName: process.env.SITE_NAME || 'COokiFy'
 };

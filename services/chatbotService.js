@@ -1,4 +1,3 @@
-// server/services/chatbotService.js
 const { OpenAI } = require('openai');
 const config = require('../config/default');
 
@@ -10,7 +9,7 @@ const client = new OpenAI({
     'HTTP-Referer': process.env.SITE_URL || 'https://cookify.com',
     'X-Title': process.env.SITE_NAME || 'COokiFy'
   },
-  timeout: 120000 // 120 seconds timeout for OpenRouter calls
+  timeout: 180000 // 180 seconds timeout for OpenRouter calls (3 minutes)
 });
 
 // Build context about the application to help the model provide relevant answers
@@ -29,7 +28,8 @@ const systemMessage = {
   - Focus on helping them find and cook recipes
   - Provide cooking tips and ingredient substitutions when asked
   - Answer questions about nutrition and dietary restrictions
-  - Keep responses brief, friendly, and food-related (under 250 words)
+  - Be friendly, knowledgeable, and food-related
+  - If asked for a specific recipe, provide complete, detailed recipes including all ingredients, measurements, and cooking steps
   - Don't make up recipes that don't exist in the platform
   - If unsure about specific recipes in the database, suggest search terms instead
   
@@ -42,7 +42,7 @@ const systemMessage = {
  * @param {number} retries - Number of retries on failure
  * @returns {Promise<any>} - API response
  */
-const safeApiCall = async (apiCall, retries = 1) => {
+const safeApiCall = async (apiCall, retries = 2) => {
   try {
     return await apiCall();
   } catch (error) {
@@ -69,26 +69,39 @@ exports.getChatbotResponse = async (message, history = []) => {
       content: msg.text
     }));
     
+    // Check for recipe requests
+    const isRecipeRequest = message.toLowerCase().includes('recipe') || 
+                            message.toLowerCase().includes('how to make') ||
+                            message.toLowerCase().includes('how do i cook');
+    
     // Limit message length to prevent timeouts
     const trimmedMessage = message.length > 500 ? message.substring(0, 500) + '...' : message;
     
     // Add system message at the beginning
     const messages = [
       systemMessage,
-      ...formattedHistory.slice(-5), // Only include last 5 messages to reduce context size
+      ...formattedHistory.slice(-10), // Include last 10 messages to provide better context
       { role: 'user', content: trimmedMessage }
     ];
+
+    // For recipe requests, add an extra instruction to ensure complete recipe details
+    if (isRecipeRequest) {
+      messages.unshift({
+        role: 'system', 
+        content: 'When asked for recipes, always provide complete details including ALL ingredients with measurements, ALL preparation steps, cooking times, and serving suggestions. Do not abbreviate or summarize recipes.'
+      });
+    }
     
     // Call OpenRouter API with retry logic
     const completion = await safeApiCall(async () => {
       return await client.chat.completions.create({
         model: 'deepseek/deepseek-chat:free', // Using the specified model
         messages: messages,
-        max_tokens: 350, // Limit response length to reduce timeout risk
+        max_tokens: 1500, // Increased token limit for longer, more detailed responses
         temperature: 0.7, // Add some creativity but keep responses relevant
-        timeout: 90000 // 90 seconds timeout
+        timeout: 160000 // 160 seconds timeout
       });
-    }, 1); // 1 retry attempt
+    }, 2); // 2 retry attempts
     
     // Return the response text
     return completion.choices[0].message.content;
@@ -114,7 +127,15 @@ exports.suggestRecipes = async (ingredients) => {
     // Limit number of ingredients to reduce context size
     const limitedIngredients = ingredients.slice(0, 10);
     
-    const prompt = `Based on these ingredients: ${limitedIngredients.join(', ')}, suggest 3 possible recipes I could make. For each recipe, provide a brief name, a short description (1-2 sentences), and just 3-4 key steps. Keep your entire response under 250 words.`;
+    const prompt = `Based on these ingredients: ${limitedIngredients.join(', ')}, suggest 3 possible recipes I could make. For each recipe, provide:
+    
+1. A descriptive name for the recipe
+2. A complete list of ingredients with measurements (include these supplied ingredients and any other essential ingredients)
+3. Detailed step-by-step cooking instructions
+4. Approximate cooking time and servings
+5. Any tips or variations
+
+Please make each recipe complete and detailed enough that someone could actually cook it.`;
     
     const messages = [
       systemMessage,
@@ -126,11 +147,11 @@ exports.suggestRecipes = async (ingredients) => {
       return await client.chat.completions.create({
         model: 'deepseek/deepseek-chat:free',
         messages: messages,
-        max_tokens: 350, // Limit token count
+        max_tokens: 1500, // Increased token count for detailed recipes
         temperature: 0.7,
-        timeout: 90000 // 90 seconds timeout
+        timeout: 160000 // 160 seconds timeout
       });
-    }, 1); // 1 retry attempt
+    }, 2); // 2 retry attempts
     
     return completion.choices[0].message.content;
   } catch (error) {
@@ -148,7 +169,7 @@ exports.suggestRecipes = async (ingredients) => {
 /**
  * Fallback responses when the API is unavailable
  * @param {string} messageType - Type of message to generate
- * @param {Array} ingredients - Optional list of ingredients for suggestions
+ * @param {Array|string} additionalInfo - Optional additional info (ingredients or message text)
  * @returns {string} - Fallback response
  */
 exports.getFallbackResponse = (messageType, ingredients = []) => {
